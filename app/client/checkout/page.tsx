@@ -5,11 +5,9 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { useCartStore } from "@/lib/cart-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
 import { Spinner } from "@/components/ui/spinner"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, MapPin, CreditCard, CheckCircle, AlertCircle, Bike, Banknote, Smartphone, ChevronRight } from "lucide-react"
@@ -22,7 +20,12 @@ const PAYMENT_METHODS = [
 
 export default function CheckoutPage() {
   const router = useRouter()
-  const { items, restaurant, total, clearCart } = useCartStore()
+
+  const [cartItems, setCartItems] = useState<any[]>([])
+  const [cartRestaurant, setCartRestaurant] = useState<any>(null)
+  const [cartTotal, setCartTotal] = useState(0)
+  const [clearCartFn, setClearCartFn] = useState<() => void>(() => () => {})
+  const [cartReady, setCartReady] = useState(false)
 
   const [address, setAddress] = useState("")
   const [notes, setNotes] = useState("")
@@ -35,8 +38,18 @@ export default function CheckoutPage() {
   const [orderSuccess, setOrderSuccess] = useState(false)
   const [orderId, setOrderId] = useState<string | null>(null)
 
-  const deliveryFee = restaurant?.delivery_fee || 0
-  const subtotal = total()
+  useEffect(() => {
+    const { useCartStore } = require("@/lib/cart-store")
+    const store = useCartStore.getState()
+    setCartItems(store.items)
+    setCartRestaurant(store.restaurant)
+    setCartTotal(store.total())
+    setClearCartFn(() => store.clearCart)
+    setCartReady(true)
+  }, [])
+
+  const deliveryFee = cartRestaurant?.delivery_fee || 0
+  const subtotal = cartTotal
   const grandTotal = subtotal + deliveryFee
 
   useEffect(() => {
@@ -46,7 +59,6 @@ export default function CheckoutPage() {
         .from("livreurs")
         .select("*, user:users(*)")
         .eq("is_available", true)
-
       if (availableDrivers) setDrivers(availableDrivers)
       setIsLoadingDrivers(false)
     }
@@ -55,14 +67,12 @@ export default function CheckoutPage() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-
       const { data: addressData } = await supabase
         .from("addresses")
         .select("*")
         .eq("user_id", user.id)
         .eq("is_default", true)
         .single()
-
       if (addressData) {
         setAddress(`${addressData.street}, ${addressData.postal_code} ${addressData.city}`)
       }
@@ -77,8 +87,7 @@ export default function CheckoutPage() {
       setError("Veuillez entrer une adresse de livraison")
       return
     }
-
-    if (items.length === 0 || !restaurant) {
+    if (cartItems.length === 0 || !cartRestaurant) {
       setError("Votre panier est vide")
       return
     }
@@ -89,17 +98,15 @@ export default function CheckoutPage() {
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-
       if (!user) {
         router.push("/auth/login?role=client")
         return
       }
 
-      // Récupérer le owner_id du restaurant
       const { data: restoData } = await supabase
         .from("restaurants")
         .select("owner_id")
-        .eq("id", restaurant.id)
+        .eq("id", cartRestaurant.id)
         .single()
 
       const orderNumber = `ORD-${Date.now()}`
@@ -110,7 +117,7 @@ export default function CheckoutPage() {
           order_number: orderNumber,
           user_id: user.id,
           client_id: user.id,
-          restaurant_id: restaurant.id,
+          restaurant_id: cartRestaurant.id,
           driver_id: null,
           livreur_id: null,
           preferred_driver_id: selectedDriver?.id || null,
@@ -130,8 +137,7 @@ export default function CheckoutPage() {
 
       if (orderError) throw orderError
 
-      // Créer les articles
-      const orderItems = items.map((item) => ({
+      const orderItems = cartItems.map((item) => ({
         order_id: order.id,
         dish_id: item.id,
         quantity: item.quantity,
@@ -145,7 +151,6 @@ export default function CheckoutPage() {
 
       if (itemsError) throw itemsError
 
-      // Notification au restaurant uniquement
       if (restoData?.owner_id) {
         await supabase.from("notifications").insert({
           user_id: restoData.owner_id,
@@ -159,13 +164,21 @@ export default function CheckoutPage() {
 
       setOrderId(order.id)
       setOrderSuccess(true)
-      clearCart()
+      clearCartFn()
     } catch (err: any) {
       setError(`Erreur: ${err.message}`)
       console.error(err)
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (!cartReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Spinner className="w-8 h-8 text-primary" />
+      </div>
+    )
   }
 
   if (orderSuccess && orderId) {
@@ -178,20 +191,13 @@ export default function CheckoutPage() {
             </div>
             <h2 className="text-2xl font-bold mb-2">Commande envoyée ! 🎉</h2>
             <p className="text-muted-foreground mb-6">
-              Votre commande a été envoyée au restaurant. Vous recevrez une notification dès qu'elle est acceptée.
+              Votre commande a été envoyée au restaurant.
             </p>
             <div className="space-y-3">
-              <Button
-                className="w-full h-12 rounded-xl"
-                onClick={() => router.push(`/client/orders/${orderId}`)}
-              >
+              <Button className="w-full h-12 rounded-xl" onClick={() => router.push(`/client/orders/${orderId}`)}>
                 Suivre ma commande
               </Button>
-              <Button
-                variant="outline"
-                className="w-full h-12 rounded-xl"
-                onClick={() => router.push("/client")}
-              >
+              <Button variant="outline" className="w-full h-12 rounded-xl" onClick={() => router.push("/client")}>
                 Retour à l&apos;accueil
               </Button>
             </div>
@@ -201,7 +207,7 @@ export default function CheckoutPage() {
     )
   }
 
-  if (items.length === 0) {
+  if (cartItems.length === 0) {
     router.push("/client/cart")
     return null
   }
@@ -223,7 +229,6 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        {/* Adresse */}
         <Card className="border-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -231,31 +236,22 @@ export default function CheckoutPage() {
               Adresse de livraison
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <FieldGroup>
-              <Field>
-                <FieldLabel>Adresse complète *</FieldLabel>
-                <Input
-                  placeholder="123 Rue de la Paix, 75001 Paris"
-                  className="h-12 rounded-xl border-2 focus:border-primary"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel>Instructions (optionnel)</FieldLabel>
-                <Input
-                  placeholder="Code porte, étage, interphone..."
-                  className="h-12 rounded-xl border-2 focus:border-primary"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-              </Field>
-            </FieldGroup>
+          <CardContent className="space-y-3">
+            <Input
+              placeholder="123 Rue de la Paix, 75001 Paris"
+              className="h-12 rounded-xl border-2 focus:border-primary"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+            <Input
+              placeholder="Code porte, étage, interphone..."
+              className="h-12 rounded-xl border-2 focus:border-primary"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
           </CardContent>
         </Card>
 
-        {/* Livreur */}
         <Card className="border-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -271,20 +267,12 @@ export default function CheckoutPage() {
               <div className="flex items-center justify-center py-6">
                 <Spinner className="w-6 h-6 text-primary" />
               </div>
-            ) : drivers.length === 0 ? (
-              <div className="text-center py-6">
-                <span className="text-3xl mb-2 block">😔</span>
-                <p className="text-sm text-muted-foreground">Aucun livreur disponible</p>
-                <p className="text-xs text-muted-foreground mt-1">Assignation automatique</p>
-              </div>
             ) : (
               <div className="space-y-2">
                 <button
                   onClick={() => setSelectedDriver(null)}
                   className={`w-full p-3 rounded-xl border-2 text-left transition-all ${
-                    selectedDriver === null
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
+                    selectedDriver === null ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -295,9 +283,7 @@ export default function CheckoutPage() {
                       <p className="font-medium text-sm">Assignation automatique</p>
                       <p className="text-xs text-muted-foreground">Le premier livreur disponible</p>
                     </div>
-                    {selectedDriver === null && (
-                      <CheckCircle className="w-5 h-5 text-primary ml-auto" />
-                    )}
+                    {selectedDriver === null && <CheckCircle className="w-5 h-5 text-primary ml-auto" />}
                   </div>
                 </button>
 
@@ -306,9 +292,7 @@ export default function CheckoutPage() {
                     key={driver.id}
                     onClick={() => setSelectedDriver(driver)}
                     className={`w-full p-3 rounded-xl border-2 text-left transition-all ${
-                      selectedDriver?.id === driver.id
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/50"
+                      selectedDriver?.id === driver.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -322,14 +306,9 @@ export default function CheckoutPage() {
                           {driver.rating > 0 && (
                             <span className="text-xs text-yellow-600">⭐ {driver.rating.toFixed(1)}</span>
                           )}
-                          <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-200">
-                            Disponible
-                          </Badge>
                         </div>
                       </div>
-                      {selectedDriver?.id === driver.id && (
-                        <CheckCircle className="w-5 h-5 text-primary" />
-                      )}
+                      {selectedDriver?.id === driver.id && <CheckCircle className="w-5 h-5 text-primary" />}
                     </div>
                   </button>
                 ))}
@@ -338,7 +317,6 @@ export default function CheckoutPage() {
           </CardContent>
         </Card>
 
-        {/* Paiement */}
         <Card className="border-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -353,9 +331,7 @@ export default function CheckoutPage() {
                   key={method.id}
                   onClick={() => setPaymentMethod(method.id)}
                   className={`w-full p-3 rounded-xl border-2 text-left transition-all ${
-                    paymentMethod === method.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
+                    paymentMethod === method.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -366,9 +342,7 @@ export default function CheckoutPage() {
                       <p className="font-medium text-sm">{method.label}</p>
                       <p className="text-xs text-muted-foreground">{method.description}</p>
                     </div>
-                    {paymentMethod === method.id && (
-                      <CheckCircle className="w-5 h-5 text-primary" />
-                    )}
+                    {paymentMethod === method.id && <CheckCircle className="w-5 h-5 text-primary" />}
                   </div>
                 </button>
               ))}
@@ -376,7 +350,6 @@ export default function CheckoutPage() {
           </CardContent>
         </Card>
 
-        {/* Résumé */}
         <Card className="border-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -386,8 +359,8 @@ export default function CheckoutPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground font-medium mb-3">{restaurant?.name}</p>
-              {items.map((item) => (
+              <p className="text-sm text-muted-foreground font-medium mb-3">{cartRestaurant?.name}</p>
+              {cartItems.map((item) => (
                 <div key={item.id} className="flex justify-between text-sm">
                   <span>{item.quantity}x {item.name}</span>
                   <span>{(item.price * item.quantity).toFixed(2)} €</span>
