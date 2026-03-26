@@ -82,6 +82,7 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: 'foodfast-cart',
+      skipHydration: true,
     }
   )
 )
