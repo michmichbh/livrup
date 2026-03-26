@@ -1,7 +1,5 @@
-"use client"
-
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { CartItem, MenuItem, Restaurant } from './types'
 
 interface CartState {
@@ -15,22 +13,28 @@ interface CartState {
   itemCount: () => number
 }
 
+const noopStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+}
+
+const storage = typeof window !== 'undefined'
+  ? createJSONStorage(() => localStorage)
+  : createJSONStorage(() => noopStorage)
+
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       items: [],
       restaurant: null,
-      
+
       addItem: (item: MenuItem, restaurant: Restaurant) => {
         const { items, restaurant: currentRestaurant } = get()
-        
-        // If adding from a different restaurant, clear cart first
         if (currentRestaurant && currentRestaurant.id !== restaurant.id) {
           set({ items: [], restaurant: null })
         }
-        
         const existingItem = items.find(i => i.id === item.id)
-        
         if (existingItem) {
           set({
             items: items.map(i =>
@@ -45,7 +49,7 @@ export const useCartStore = create<CartState>()(
           })
         }
       },
-      
+
       removeItem: (itemId: string) => {
         const { items } = get()
         const newItems = items.filter(i => i.id !== itemId)
@@ -54,35 +58,34 @@ export const useCartStore = create<CartState>()(
           restaurant: newItems.length === 0 ? null : get().restaurant,
         })
       },
-      
+
       updateQuantity: (itemId: string, quantity: number) => {
         if (quantity <= 0) {
           get().removeItem(itemId)
           return
         }
-        
         set({
           items: get().items.map(i =>
             i.id === itemId ? { ...i, quantity } : i
           ),
         })
       },
-      
+
       clearCart: () => {
         set({ items: [], restaurant: null })
       },
-      
+
       total: () => {
         return get().items.reduce((sum, item) => sum + item.price * item.quantity, 0)
       },
-      
+
       itemCount: () => {
         return get().items.reduce((sum, item) => sum + item.quantity, 0)
       },
     }),
     {
       name: 'foodfast-cart',
-      skipHydration: true,
+      storage,
     }
   )
 )
