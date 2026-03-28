@@ -254,11 +254,7 @@ export default function RestaurantPage() {
                         <div className="flex-1 flex flex-col justify-between min-w-0">
                           <div>
                             <h3 className="font-semibold text-base">{dish.name}</h3>
-                            {dish.description && (
-                              <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                                {dish.description}
-                              </p>
-                            )}
+
                           </div>
 
                           <div className="flex items-center justify-between mt-3">
