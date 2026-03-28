@@ -253,7 +253,7 @@ export default function RestaurantPage() {
                       <div className="flex gap-3 p-3">
                         <div className="flex-1 flex flex-col justify-between min-w-0">
                           <div>
-                            <h3 className="font-semibold text-base">{dish.name}</h3>
+                            <h3 className="font-bold text-lg mt-2">{dish.name}</h3>
 
                           </div>
 
