@@ -332,11 +332,11 @@ export default function RestaurantPage() {
       {/* Modal plat */}
       {selectedDish && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
           onClick={() => setSelectedDish(null)}
         >
           <div
-            className="bg-background w-full max-w-lg rounded-t-3xl overflow-hidden shadow-2xl"
+            className="bg-background w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Image grande */}
