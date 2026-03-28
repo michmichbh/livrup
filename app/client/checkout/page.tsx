@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, MapPin, CreditCard, CheckCircle, AlertCircle, Bike, Banknote, Smartphone, ChevronRight } from "lucide-react"
+import { ArrowLeft, MapPin, CreditCard, CheckCircle, AlertCircle, Bike, Banknote, Smartphone, ChevronRight, Lock } from "lucide-react"
 
 const PAYMENT_METHODS = [
   { id: "card", label: "Carte bancaire", icon: CreditCard, description: "Visa, Mastercard..." },
@@ -37,6 +37,16 @@ export default function CheckoutPage() {
   const [error, setError] = useState<string | null>(null)
   const [orderSuccess, setOrderSuccess] = useState(false)
   const [orderId, setOrderId] = useState<string | null>(null)
+
+  // Carte bancaire
+  const [cardNumber, setCardNumber] = useState("")
+  const [cardName, setCardName] = useState("")
+  const [cardExpiry, setCardExpiry] = useState("")
+  const [cardCVV, setCardCVV] = useState("")
+
+  // Mobile money
+  const [mobilePhone, setMobilePhone] = useState("")
+  const [mobileOperator, setMobileOperator] = useState("orange")
 
   useEffect(() => {
     const { useCartStore } = require("@/lib/cart-store")
@@ -82,6 +92,23 @@ export default function CheckoutPage() {
     fetchAddress()
   }, [])
 
+  const formatCardNumber = (value: string) => {
+    const v = value.replace(/\s+/g, "").replace(/[^0-9]/gi, "")
+    const matches = v.match(/\d{4,16}/g)
+    const match = (matches && matches[0]) || ""
+    const parts = []
+    for (let i = 0, len = match.length; i < len; i += 4) {
+      parts.push(match.substring(i, i + 4))
+    }
+    return parts.length ? parts.join(" ") : value
+  }
+
+  const formatExpiry = (value: string) => {
+    const v = value.replace(/\D/g, "")
+    if (v.length >= 2) return v.substring(0, 2) + "/" + v.substring(2, 4)
+    return v
+  }
+
   const handleSubmitOrder = async () => {
     if (!address.trim()) {
       setError("Veuillez entrer une adresse de livraison")
@@ -89,6 +116,16 @@ export default function CheckoutPage() {
     }
     if (cartItems.length === 0 || !cartRestaurant) {
       setError("Votre panier est vide")
+      return
+    }
+    if (paymentMethod === "card") {
+      if (!cardNumber || !cardName || !cardExpiry || !cardCVV) {
+        setError("Veuillez remplir tous les champs de la carte bancaire")
+        return
+      }
+    }
+    if (paymentMethod === "mobile" && !mobilePhone) {
+      setError("Veuillez entrer votre numéro de téléphone mobile")
       return
     }
 
@@ -130,7 +167,7 @@ export default function CheckoutPage() {
           notes: notes || null,
           client_notes: notes || null,
           payment_method: paymentMethod,
-          payment_status: "pending",
+          payment_status: paymentMethod === "cash" ? "pending" : "paid",
         })
         .select()
         .single()
@@ -229,6 +266,7 @@ export default function CheckoutPage() {
           </div>
         )}
 
+        {/* Adresse */}
         <Card className="border-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -238,13 +276,13 @@ export default function CheckoutPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <Input
-              placeholder="123 Rue de la Paix, 75001 Paris"
+              placeholder="Ex: Rue de Paris, Djibouti"
               className="h-12 rounded-xl border-2 focus:border-primary"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
             />
             <Input
-              placeholder="Code porte, étage, interphone..."
+              placeholder="Instructions supplémentaires..."
               className="h-12 rounded-xl border-2 focus:border-primary"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -252,6 +290,7 @@ export default function CheckoutPage() {
           </CardContent>
         </Card>
 
+        {/* Livreur */}
         <Card className="border-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -317,6 +356,7 @@ export default function CheckoutPage() {
           </CardContent>
         </Card>
 
+        {/* Paiement */}
         <Card className="border-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -324,32 +364,130 @@ export default function CheckoutPage() {
               Méthode de paiement
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {PAYMENT_METHODS.map((method) => (
-                <button
-                  key={method.id}
-                  onClick={() => setPaymentMethod(method.id)}
-                  className={`w-full p-3 rounded-xl border-2 text-left transition-all ${
-                    paymentMethod === method.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
-                      <method.icon className="w-5 h-5 text-foreground" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{method.label}</p>
-                      <p className="text-xs text-muted-foreground">{method.description}</p>
-                    </div>
-                    {paymentMethod === method.id && <CheckCircle className="w-5 h-5 text-primary" />}
+          <CardContent className="space-y-3">
+            {PAYMENT_METHODS.map((method) => (
+              <button
+                key={method.id}
+                onClick={() => setPaymentMethod(method.id)}
+                className={`w-full p-3 rounded-xl border-2 text-left transition-all ${
+                  paymentMethod === method.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+                    <method.icon className="w-5 h-5 text-foreground" />
                   </div>
-                </button>
-              ))}
-            </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">{method.label}</p>
+                    <p className="text-xs text-muted-foreground">{method.description}</p>
+                  </div>
+                  {paymentMethod === method.id && <CheckCircle className="w-5 h-5 text-primary" />}
+                </div>
+              </button>
+            ))}
+
+            {/* Formulaire carte bancaire */}
+            {paymentMethod === "card" && (
+              <div className="mt-4 space-y-3 p-4 bg-muted/50 rounded-xl border-2 border-primary/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <Lock className="w-4 h-4 text-green-600" />
+                  <p className="text-xs text-green-600 font-medium">Paiement sécurisé SSL</p>
+                </div>
+
+                <Input
+                  placeholder="Numéro de carte (1234 5678 9012 3456)"
+                  className="h-12 rounded-xl border-2 focus:border-primary font-mono"
+                  value={cardNumber}
+                  maxLength={19}
+                  onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                />
+
+                <Input
+                  placeholder="Nom sur la carte"
+                  className="h-12 rounded-xl border-2 focus:border-primary uppercase"
+                  value={cardName}
+                  onChange={(e) => setCardName(e.target.value.toUpperCase())}
+                />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    placeholder="MM/AA"
+                    className="h-12 rounded-xl border-2 focus:border-primary font-mono"
+                    value={cardExpiry}
+                    maxLength={5}
+                    onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
+                  />
+                  <Input
+                    placeholder="CVV"
+                    className="h-12 rounded-xl border-2 focus:border-primary font-mono"
+                    value={cardCVV}
+                    maxLength={3}
+                    type="password"
+                    onChange={(e) => setCardCVV(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-xs text-muted-foreground">Accepté :</span>
+                  <span className="text-xs font-bold text-blue-600">VISA</span>
+                  <span className="text-xs font-bold text-red-600">Mastercard</span>
+                  <span className="text-xs font-bold text-orange-500">Amex</span>
+                </div>
+              </div>
+            )}
+
+            {/* Formulaire mobile money */}
+            {paymentMethod === "mobile" && (
+              <div className="mt-4 space-y-3 p-4 bg-muted/50 rounded-xl border-2 border-primary/20">
+                <p className="text-xs text-muted-foreground font-medium mb-2">Choisir l'opérateur</p>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: "orange", label: "Orange Money", emoji: "🟠" },
+                    { id: "wave", label: "Wave", emoji: "🔵" },
+                    { id: "djib", label: "Dahabshiil", emoji: "🟢" },
+                  ].map((op) => (
+                    <button
+                      key={op.id}
+                      onClick={() => setMobileOperator(op.id)}
+                      className={`p-3 rounded-xl border-2 text-center transition-all ${
+                        mobileOperator === op.id ? "border-primary bg-primary/5" : "border-border"
+                      }`}
+                    >
+                      <span className="text-xl block mb-1">{op.emoji}</span>
+                      <span className="text-xs font-medium">{op.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <Input
+                  placeholder="Numéro de téléphone (+253 77 XX XX XX)"
+                  className="h-12 rounded-xl border-2 focus:border-primary"
+                  value={mobilePhone}
+                  onChange={(e) => setMobilePhone(e.target.value)}
+                  type="tel"
+                />
+
+                <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
+                  <p className="text-xs text-blue-700">
+                    📱 Vous recevrez une notification sur votre téléphone pour confirmer le paiement de <strong>{grandTotal.toFixed(2)} €</strong>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Espèces */}
+            {paymentMethod === "cash" && (
+              <div className="mt-4 p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
+                <p className="text-sm text-yellow-800">
+                  💵 Vous paierez <strong>{grandTotal.toFixed(2)} €</strong> en espèces directement au livreur à la réception de votre commande.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
+        {/* Résumé */}
         <Card className="border-2">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -392,7 +530,7 @@ export default function CheckoutPage() {
           disabled={isLoading}
         >
           {isLoading ? <Spinner className="mr-2" /> : null}
-          Confirmer la commande — {grandTotal.toFixed(2)} €
+          {paymentMethod === "cash" ? "Commander — Payer à la livraison" : `Payer ${grandTotal.toFixed(2)} €`}
         </Button>
       </div>
     </div>
